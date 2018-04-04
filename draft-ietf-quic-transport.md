@@ -1745,9 +1745,9 @@ packet numbers cannot be used to correlate activity on different paths.
 
 Endpoints MAY change connection ID at any time based on implementation-specific
 concerns.  For example, after a period of network inactivity NAT rebinding might
-occur when the client begins sending data again. An endpoint might wish to reduce
-linkability by employing a new connection ID when sending traffic after a period
-of inactivity.
+occur when the client begins sending data again. An endpoint might wish to
+reduce linkability by employing a new connection ID when sending traffic after a
+period of inactivity.
 
 An endpoint that receives a successfully authenticated packet with a previously
 unused connection ID MUST use the next available connection ID for any packets
@@ -2500,11 +2500,11 @@ Unlike TCP SACKs, QUIC acknowledgements are irrevocable.  Once a packet has
 been acknowledged, even if it does not appear in a future ACK frame,
 it remains acknowledged.
 
-A client MUST NOT acknowledge Retry packets.  Version
-Negotiation packets don't contain a packet number and Retry packets include the
-packet number from the Initial packet it responds to.  Rather than relying on
-ACK frames, these packets are implicitly acknowledged by the next Initial packet
-sent by the client.
+A client MUST NOT acknowledge Retry packets.  Retry packets include the packet
+number from the Initial packet it responds to.  Version Negotiation packets
+cannot be acknowledged because they do not contain a packet number.  Rather than
+relying on ACK frames, these packets are implicitly acknowledged by the next
+Initial packet sent by the client.
 
 An ACK frame is shown below.
 
