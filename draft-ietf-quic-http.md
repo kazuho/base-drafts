@@ -132,7 +132,7 @@ following header in any response:
 Alt-Svc: hq=":50781"
 ~~~
 
-On receipt of an Alt-Svc header indicating HTTP/QUIC support, a client MAY
+On receipt of an Alt-Svc record indicating HTTP/QUIC support, a client MAY
 attempt to establish a QUIC connection to the indicated host and port and, if
 successful, send HTTP requests using the mapping described in this document.
 
@@ -140,9 +140,8 @@ Connectivity problems (e.g. firewall blocking UDP) can result in QUIC connection
 establishment failure, in which case the client SHOULD continue using the
 existing connection or try another alternative endpoint offered by the origin.
 
-Servers MAY serve HTTP/QUIC on any UDP port.  Servers MUST use the same port
-across all IP addresses that serve a single domain, and SHOULD NOT change this
-port.
+Servers MAY serve HTTP/QUIC on any UDP port, since an alternative always
+includes an explicit port.
 
 ### QUIC Version Hints {#alt-svc-version-hint}
 
@@ -433,27 +432,41 @@ frame.
 
 ## Server Push
 
-HTTP/QUIC supports server push as described in {{!RFC7540}}. During connection
-establishment, the client enables server push by sending a MAX_PUSH_ID frame
-(see {{frame-max-push-id}}).  A server cannot use server push until it receives
-a MAX_PUSH_ID frame.
+HTTP/QUIC supports server push in a similar manner to {{!RFC7540}}, but uses
+different mechanisms. During connection establishment, the client enables server
+push by sending a MAX_PUSH_ID frame (see {{frame-max-push-id}}). A server cannot
+use server push until it receives a MAX_PUSH_ID frame.
 
 As with server push for HTTP/2, the server initiates a server push by sending a
-PUSH_PROMISE frame that includes request header fields attributed to the
-request. The PUSH_PROMISE frame is sent on the client-initiated, bidirectional
-stream that carried the request that generated the push.  This allows the server
-push to be associated with a request.  Ordering of a PUSH_PROMISE in relation to
+PUSH_PROMISE frame (see {{frame-push-promise}}) that includes request headers
+for the promised request.  Promised requests MUST conform to the requirements in
+Section 8.2 of {{!RFC7540}}.
+
+The PUSH_PROMISE frame is sent on the client-initiated, bidirectional stream
+that carried the request that generated the push.  This allows the server push
+to be associated with a request.  Ordering of a PUSH_PROMISE in relation to
 certain parts of the response is important (see Section 8.2.1 of {{!RFC7540}}).
 
 Unlike HTTP/2, the PUSH_PROMISE does not reference a stream; it contains a Push
-ID. The Push ID uniquely identifies a server push (see {{frame-push-promise}}).
-This allows a server to fulfill promises in the order that best suits its needs.
+ID. The Push ID uniquely identifies a server push. This allows a server to
+fulfill promises in the order that best suits its needs.
 
 When a server later fulfills a promise, the server push response is conveyed on
 a push stream.  A push stream is a server-initiated, unidirectional stream.  A
-push stream always begins with a header (see {{fig-push-stream-header}}) that
-identifies the Push ID of the promise that it fulfills, encoded as a
+push stream identifies the Push ID of the promise that it fulfills, encoded as a
 variable-length integer.
+
+A server SHOULD use Push IDs sequentially, starting at 0.  A client uses the
+MAX_PUSH_ID frame ({{frame-max-push-id}}) to limit the number of pushes that a
+server can promise.  A client MUST treat receipt of a push stream with a Push ID
+that is greater than the maximum Push ID as a connection error of type
+HTTP_PUSH_LIMIT_EXCEEDED.
+
+If a promised server push is not needed by the client, the client SHOULD send a
+CANCEL_PUSH frame; if the push stream is already open, a QUIC STOP_SENDING frame
+with an appropriate error code can be used instead (e.g., HTTP_PUSH_REFUSED,
+HTTP_PUSH_ALREADY_IN_CACHE; see {{errors}}).  This asks the server not to
+transfer the data and indicates that it will be discarded upon receipt.
 
 ~~~~~~~~~~ drawing
  0                   1                   2                   3
@@ -464,27 +477,15 @@ variable-length integer.
 ~~~~~~~~~~
 {: #fig-push-stream-header title="Push Stream Header"}
 
-A server SHOULD use Push IDs sequentially, starting at 0.  A client uses the
-MAX_PUSH_ID frame ({{frame-max-push-id}}) to limit the number of pushes that a
-server can promise.  A client MUST treat receipt of a push stream with a Push ID
-that is greater than the maximum Push ID as a connection error of type
-HTTP_PUSH_LIMIT_EXCEEDED.
+Push streams always begin with a header containing the Push ID.  Each Push ID
+MUST only be used once in a push stream header.  If a push stream header
+includes a Push ID that was used in another push stream header, the client MUST
+treat this as a connection error of type HTTP_DUPLICATE_PUSH.  The same Push ID
+can be used in multiple PUSH_PROMISE frames (see {{frame-push-promise}}).
 
-Each Push ID MUST only be used once in a push stream header.  If a push stream
-header includes a Push ID that was used in another push stream header, the
-client MUST treat this as a connection error of type HTTP_DUPLICATE_PUSH.  The
-same Push ID can be used in multiple PUSH_PROMISE frames (see
-{{frame-push-promise}}).
-
-After the push stream header, a push contains a response ({{request-response}}),
+After the header, a push stream contains a response ({{request-response}}),
 with response headers, a response body (if any) carried by DATA frames, then
 trailers (if any) carried by HEADERS frames.
-
-If a promised server push is not needed by the client, the client SHOULD send a
-CANCEL_PUSH frame; if the push stream is already open, a QUIC STOP_SENDING frame
-with an appropriate error code can be used instead (e.g., HTTP_PUSH_REFUSED,
-HTTP_PUSH_ALREADY_IN_CACHE; see {{errors}}).  This asks the server not to
-transfer the data and indicates that it will be discarded upon receipt.
 
 
 # HTTP Framing Layer {#http-framing-layer}
@@ -787,34 +788,19 @@ The following settings are defined in HTTP/QUIC:
   SETTINGS_MAX_HEADER_LIST_SIZE (0x6):
   : An integer with a maximum value of 2^30 - 1
 
-#### Usage in 0-RTT
+#### Initial SETTINGS Values
 
 When a 0-RTT QUIC connection is being used, the client's initial requests will
-be sent before the arrival of the server's SETTINGS frame.  Clients SHOULD
-cache at least the following settings about servers:
-
-  - SETTINGS_HEADER_TABLE_SIZE
-  - SETTINGS_MAX_HEADER_LIST_SIZE
-
-Clients MUST comply with cached settings until the server's current settings are
-received.  If a client does not have cached values, it SHOULD assume the
-following values:
-
-  - SETTINGS_HEADER_TABLE_SIZE:  0 octets
-  - SETTINGS_MAX_HEADER_LIST_SIZE:  16,384 octets
+be sent before the arrival of the server's SETTINGS frame.  Clients MUST store
+the settings the server provided in the session being resumed and MUST comply
+with stored settings until the server's current settings are received.
 
 Servers MAY continue processing data from clients which exceed its current
 configuration during the initial flight.  In this case, the client MUST apply
 the new settings immediately upon receipt.
 
-If the connection is closed because these or other constraints were violated
-during the 0-RTT flight (e.g. with HTTP_HPACK_DECOMPRESSION_FAILED), clients MAY
-establish a new connection and retry any 0-RTT requests using the settings sent
-by the server on the closed connection. (This assumes that only requests that
-are safe to retry are sent in 0-RTT.) If the connection was closed before the
-SETTINGS frame was received, clients SHOULD discard any cached values and use
-the defaults above on the next connection.
-
+When a 1-RTT QUIC connection is being used, the client MUST NOT send requests
+prior to receiving and processing the server's SETTINGS frame.
 
 ### PUSH_PROMISE {#frame-push-promise}
 

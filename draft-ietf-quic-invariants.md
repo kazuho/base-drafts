@@ -85,9 +85,10 @@ over time in response to new requirements.  Many characteristics of the protocol
 will change between versions.
 
 This document describes the subset of QUIC that is intended to remain stable as
-new versions are developed and deployed.
+new versions are developed and deployed.  All of these invariants are
+IP-version-independent.
 
-The primary goal of this document is to ensure that it is possible deploy new
+The primary goal of this document is to ensure that it is possible to deploy new
 versions of QUIC.  By documenting the things that can't change, this document
 aims to preserve the ability to change any other aspect of the protocol.  Thus,
 unless specifically described in this document, any aspect of the protocol can
@@ -167,7 +168,7 @@ or between 4 and 18 octets in length (inclusive).  For example, an octet with
 the value 0xe0 describes a 17 octet Destination Connection ID and a zero octet
 Source Connection ID.
 
-The connection ID lengths are followed by a two connection IDs.  The connection
+The connection ID lengths are followed by two connection IDs.  The connection
 ID associated with the recipient of the packet (the Destination Connection ID)
 is followed by the connection ID associated with the sender of the packet (the
 Source Connection ID).
@@ -229,7 +230,7 @@ order.  Version 0 is reserved for version negotiation (see
 # Version Negotiation {#version-negotiation}
 
 A QUIC endpoint that receives a packet with a long header and a version it
-either does not understand or does not support sends a Version Negotiation
+either does not understand or does not support might send a Version Negotiation
 packet in response.  Packets with a short header do not trigger version
 negotiation and are always associated with an existing connection.
 
@@ -361,6 +362,8 @@ The following statements are NOT guaranteed to be true for every QUIC version:
 
 * QUIC endpoints change the version they speak if they are sent a Version
   Negotiation packet
+
+* The version field in a QUIC long header is the same in both directions
 
 * Only one connection at a time is established between any pair of QUIC
   endpoints

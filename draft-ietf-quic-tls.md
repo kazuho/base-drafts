@@ -407,6 +407,11 @@ TLS if it is able.  Each time that TLS is provided with new data, new handshake
 octets are requested from TLS.  TLS might not provide any octets if the
 handshake messages it has received are incomplete or it has no data to send.
 
+At the server, when TLS provides handshake octets, it also needs to indicate
+whether the octets contain a HelloRetryRequest.  A HelloRetryRequest MUST always
+be sent in a Retry packet, so the QUIC server needs to know whether the octets
+are a HelloRetryRequest.
+
 Once the TLS handshake is complete, this is indicated to QUIC along with any
 final handshake octets that TLS needs to send.  TLS also provides QUIC with the
 transport parameters that the peer advertised during the handshake.
@@ -593,6 +598,21 @@ A server MUST NOT use post-handshake client authentication (see Section 4.6.2 of
 {{!TLS13}}).
 
 
+## Rejecting 0-RTT
+
+A server rejects 0-RTT by rejecting 0-RTT at the TLS layer.  This results in
+early exporter keys being unavailable, thereby preventing the use of 0-RTT for
+QUIC.
+
+A client that attempts 0-RTT MUST also consider 0-RTT to be rejected if it
+receives a Retry or Version Negotiation packet.
+
+When 0-RTT is rejected, all connection characteristics that the client assumed
+might be incorrect.  This includes the choice of application protocol, transport
+parameters, and any application configuration.  The client therefore MUST reset
+the state of all streams, including application state bound to those streams.
+
+
 ## TLS Errors
 
 Errors in the TLS connection SHOULD be signaled using TLS alerts on stream 0.  A
@@ -612,7 +632,7 @@ connection (see {{key-expansion}}).
 
 Different keys are used for QUIC packet protection and TLS record protection.
 TLS handshake messages are protected solely with TLS record protection,
-but post-handshake messages are redundantly proteted with both
+but post-handshake messages are redundantly protected with
 both the QUIC packet protection and the TLS record protection. These messages
 are limited in number, and so the additional overhead is small.
 
@@ -632,6 +652,20 @@ recipient (see {{key-phases}} for details).
 An endpoint retransmits stream data in a new packet.  New packets have new
 packet numbers and use the latest packet protection keys.  This simplifies key
 management when there are key updates (see {{key-update}}).
+
+
+## Enabling 0-RTT {#enable-0rtt}
+
+In order to be usable for 0-RTT, TLS MUST provide a NewSessionTicket message
+that contains the "max_early_data" extension with the value 0xffffffff; the
+amount of data which the client can send in 0-RTT is controlled by the
+"initial_max_data" transport parameter supplied by the server.  A client MUST
+treat receipt of a NewSessionTicket that contains a "max_early_data" extension
+with any other value as a connection error of type PROTOCOL_VIOLATION.
+
+Early data within the TLS connection MUST NOT be used.  As it is for other TLS
+application data, a server MUST treat receiving early data on the TLS connection
+as a connection error of type PROTOCOL_VIOLATION.
 
 
 ## QUIC Key Expansion {#key-expansion}
@@ -767,9 +801,9 @@ the PRF hash function.
 
 ~~~
 client_pp_secret_<N+1> =
-  QHKDF-Update(client_pp_secret_<N>, "client 1rtt", Hash.length)
+  QHKDF-Expand(client_pp_secret_<N>, "client 1rtt", Hash.length)
 server_pp_secret_<N+1> =
-  QHKDF-Update(server_pp_secret_<N>, "server 1rtt", Hash.length)
+  QHKDF-Expand(server_pp_secret_<N>, "server 1rtt", Hash.length)
 ~~~
 
 This allows for a succession of new secrets to be created as needed.
@@ -1116,7 +1150,7 @@ the transition between keys.  Packets with higher packet numbers always use the
 updated keys and MUST NOT be decrypted with old keys.
 
 Keys and their corresponding secrets SHOULD be discarded when an endpoint has
-received all packets with sequence numbers lower than the lowest sequence number
+received all packets with packet numbers lower than the lowest packet number
 used for the new key.  An endpoint might discard keys if it determines that the
 length of the delay to affected packets is excessive.
 
@@ -1141,7 +1175,7 @@ key updates in a short time frame succession and significant packet reordering.
 As shown in {{quic-tls-handshake}} and {{ex-key-update}}, there is never a
 situation where there are more than two different sets of keying material that
 might be received by a peer.  Once both sending and receiving keys have been
-updated,
+updated, the peers immediately begin to use them.
 
 A server cannot initiate a key update until it has received the client's
 Finished message.  Otherwise, packets protected by the updated keys could be
@@ -1405,7 +1439,7 @@ unprotected.
 Accepting unprotected - specifically unauthenticated - packets presents a denial
 of service risk to endpoints.  An attacker that is able to inject unprotected
 packets can cause a recipient to drop even protected packets with a matching
-sequence number.  The spurious packet shadows the genuine packet, causing the
+packet number.  The spurious packet shadows the genuine packet, causing the
 genuine packet to be ignored as redundant.
 
 Once the TLS handshake is complete, both peers MUST ignore unprotected packets.
@@ -1424,14 +1458,16 @@ See {{useless}} for a discussion of these risks.
 
 To avoid receiving TLS packets that contain no useful data, a TLS implementation
 MUST reject empty TLS handshake records and any record that is not permitted by
-the TLS state machine.  Any TLS application data or alerts that is received
-prior to the end of the handshake MUST be treated as a fatal error.
+the TLS state machine.  Any TLS application data or alerts that are received
+prior to the end of the handshake MUST be treated as a connection error of type
+PROTOCOL_VIOLATION.
 
 
 ## Use of 0-RTT Keys {#using-early-data}
 
-If 0-RTT keys are available, the lack of replay protection means that
-restrictions on their use are necessary to avoid replay attacks on the protocol.
+If 0-RTT keys are available (see {{enable-0rtt}}), the lack of replay protection
+means that restrictions on their use are necessary to avoid replay attacks on
+the protocol.
 
 A client MUST only use 0-RTT keys to protect data that is idempotent.  A client
 MAY wish to apply additional restrictions on what data it sends prior to the
@@ -1444,6 +1480,9 @@ messages.  A client SHOULD stop sending 0-RTT data if it receives an indication
 that 0-RTT data has been rejected.
 
 A server MUST NOT use 0-RTT keys to protect packets.
+
+If a server rejects 0-RTT, then the TLS stream will not include any TLS records
+protected with 0-RTT keys.
 
 
 ## Receiving Out-of-Order Protected Frames {#pre-hs-protected}
@@ -1524,38 +1563,6 @@ The quic_transport_parameters extension is carried in the ClientHello and the
 EncryptedExtensions messages during the handshake.
 
 
-## Priming 0-RTT
-
-QUIC uses TLS without modification.  Therefore, it is possible to use a
-pre-shared key that was established in a TLS handshake over TCP to enable 0-RTT
-in QUIC.  Similarly, QUIC can provide a pre-shared key that can be used to
-enable 0-RTT in TCP.
-
-All the restrictions on the use of 0-RTT apply, with the exception of the ALPN
-label, which MUST only change to a label that is explicitly designated as being
-compatible.  The client indicates which ALPN label it has chosen by placing that
-ALPN label first in the ALPN extension. In order to be usable for 0-RTT,
-the NewSessionTicket MUST contain the "max_early_data" extension with the
-value 0xffffffff; the amount of data which the client can send in 0-RTT
-is controlled by the "initial_max_data" transport parameter supplied by the
-server. A client MUST treat receipt of a NewSessionTicket that contains a
-"max_early_data" extension with any other value as a connection error of type
-PROTOCOL_VIOLATION.
-
-The certificate that the server uses MUST be considered valid for both
-connections, which will use different protocol stacks and could use different
-port numbers.  For instance, HTTP/1.1 and HTTP/2 operate over TLS and TCP,
-whereas QUIC operates over UDP.
-
-Source address validation is not completely portable between different protocol
-stacks.  Even if the source IP address remains constant, the port number is
-likely to be different.  Packet reflection attacks are still possible in this
-situation, though the set of hosts that can initiate these attacks is greatly
-reduced.  A server might choose to avoid source address validation for such a
-connection, or allow an increase to the amount of data that it sends toward the
-client without source validation.
-
-
 # Security Considerations
 
 There are likely to be some real clangers here eventually, but the current set
@@ -1598,6 +1605,8 @@ TLS records SHOULD always contain at least one octet of a handshake messages or
 alert.  Records containing only padding are permitted during the handshake, but
 an excessive number might be used to generate unnecessary work.  Once the TLS
 handshake is complete, endpoints MUST NOT send TLS application data records.
+Receiving TLS application data MUST be treated as a connection error of type
+PROTOCOL_VIOLATION.
 
 While there are legitimate uses for some redundant packets, implementations
 SHOULD track redundant packets and treat excessive volumes of any non-productive
