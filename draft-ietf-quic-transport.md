@@ -3859,7 +3859,7 @@ The server populates the Destination Connection ID with the connection ID that
 the client included in the Source Connection ID of the Initial packet.
 
 The server includes a connection ID of its choice in the Source Connection ID
-field.  This value MUST not be equal to the Destination Connection ID field of
+field.  This value MUST NOT be equal to the Destination Connection ID field of
 the packet sent by the client.  The client MUST use this connection ID in the
 Destination Connection ID of subsequent packets that it sends.
 
