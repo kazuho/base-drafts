@@ -3498,8 +3498,7 @@ Type-Specific Bits (X):
 Version:
 
 : The QUIC Version is a 32-bit field that follows the first byte.  This field
-  indicates which version of QUIC is in use and determines how the rest of the
-  protocol fields are interpreted.
+  determines how the rest of the protocol fields are interpreted.
 
 DCID Len:
 
@@ -3536,12 +3535,13 @@ Source Connection ID:
 In this version of QUIC, the following packet types with the long header are
 defined:
 
-| Type | Name                          | Section                     |
-|-----:|:------------------------------|:----------------------------|
-|  0x0 | Initial                       | {{packet-initial}}          |
-|  0x1 | 0-RTT                         | {{packet-0rtt}}             |
-|  0x2 | Handshake                     | {{packet-handshake}}        |
-|  0x3 | Retry                         | {{packet-retry}}            |
+| Version | Type | Name                          | Section                     |
+|--------:|-----:|:------------------------------|:----------------------------|
+|       1 | 0x0 | Initial                       | {{packet-initial}}          |
+|       1 | 0x1 | 0-RTT                         | {{packet-0rtt}}             |
+|       1 | 0x2 | Handshake                     | {{packet-handshake}}        |
+|       1 | 0x3 | Retry                         | {{packet-retry}}            |
+|   not 1 | any | 1-RTT                         | {{packet-1rtt-long}}        |
 {: #long-packet-types title="Long Header Packet Types"}
 
 The header form bit, connection ID lengths byte, Destination and Source
@@ -3997,6 +3997,46 @@ failed validation as a connection error of type TRANSPORT_PARAMETER_ERROR.
 
 A Retry packet does not include a packet number and cannot be explicitly
 acknowledged by a client.
+
+### 1-RTT Long Header Packets {#packet-1rtt-long}
+
+1-RTT packets can be used once the 1-RTT keys are negotiated.  Two types of
+1-RTT packet are defined: the 1-RTT long header packet and the short header
+packets {{short-header}}.
+
+Use of the short header packets is generally preferable, as it has less overhead
+and also exposes the Spin Bit.  The purpose of using the 1-RTT long header
+packets is to grease the Version field.
+
+~~~
++-+-+-+-+-+-+-+-+
+|1|1|R R R R|P P|
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                         Version (32)                          |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+| DCID Len (8)  |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|               Destination Connection ID (0..160)            ...
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+| SCID Len (8)  |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                 Source Connection ID (0..160)               ...
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                           Length (i)                        ...
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                    Packet Number (8/16/24/32)               ...
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                          Payload (*)                        ...
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+~~~
+
+When using the 1-RTT long header format, the sender MUST set the Version field
+to a value other than 0x00000001.  The version SHOULD be picked at-random after
+the connection is being established, and remain consistent through the lifetime
+of the connection.
+
+The receiver identifies the connection to which the packet belongs by consulting
+the Destination Connection ID.  The value of the Version field MUST be ignored.
 
 ## Short Header Packets {#short-header}
 
