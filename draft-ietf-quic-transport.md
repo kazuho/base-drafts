@@ -4012,6 +4012,9 @@ packets is to grease the Version field.
 alternate_version transport parameter.  This packet type MUST NOT be used when
 that transport parameter is absent.
 
+Once an endpoint decides to use 1-RTT long header packets, it SHOULD continue
+using that packet type until the end of the connection.
+
 ~~~
 +-+-+-+-+-+-+-+-+
 |1|1|R R R R|P P|
