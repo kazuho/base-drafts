@@ -3541,7 +3541,7 @@ defined:
 |       1 | 0x1 | 0-RTT                         | {{packet-0rtt}}             |
 |       1 | 0x2 | Handshake                     | {{packet-handshake}}        |
 |       1 | 0x3 | Retry                         | {{packet-retry}}            |
-|   not 1 | any | 1-RTT                         | {{packet-1rtt-long}}        |
+|     any | any | 1-RTT                         | {{packet-1rtt-long}}        |
 {: #long-packet-types title="Long Header Packet Types"}
 
 The header form bit, connection ID lengths byte, Destination and Source
@@ -4008,6 +4008,10 @@ Use of the short header packets is generally preferable, as it has less overhead
 and also exposes the Spin Bit.  The purpose of using the 1-RTT long header
 packets is to grease the Version field.
 
+1-RTT long header packets MAY be used when the peer provides the
+alternate_version transport parameter.  This packet type MUST NOT be used when
+that transport parameter is absent.
+
 ~~~
 +-+-+-+-+-+-+-+-+
 |1|1|R R R R|P P|
@@ -4031,9 +4035,8 @@ packets is to grease the Version field.
 ~~~
 
 When using the 1-RTT long header format, the sender MUST set the Version field
-to a value other than 0x00000001.  The version SHOULD be picked at-random after
-the connection is being established, and remain consistent through the lifetime
-of the connection.
+to the value provided by the peer using the alternate_version transport
+parameter.
 
 The receiver identifies the connection to which the packet belongs by consulting
 the Destination Connection ID.  The value of the Version field MUST be ignored.
@@ -4202,6 +4205,7 @@ language from Section 3 of {{!TLS13=RFC8446}}.
       disable_migration(12),
       preferred_address(13),
       active_connection_id_limit(14),
+      alternate_version(15),
       (65535)
    } TransportParameterId;
 
@@ -4369,6 +4373,12 @@ active_connection_id_limit (0x000e):
 : The maximum number of connection IDs from the peer that an endpoint is willing
   to store. This value includes only connection IDs sent in NEW_CONNECTION_ID
   frames. If this parameter is absent, a default of 0 is assumed.
+
+alternate_version (0x000f):
+
+: The QUIC version to be used by the peer when sending 1-RTT long header packets
+  ({{packet-1rtt-long}}).  If this parameter is absent, the peer MUST NOT send
+  1-RTT long header packets.
 
 If present, transport parameters that set initial flow control limits
 (initial_max_stream_data_bidi_local, initial_max_stream_data_bidi_remote, and
