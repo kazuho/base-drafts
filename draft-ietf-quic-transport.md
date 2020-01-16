@@ -3126,7 +3126,8 @@ An ACK frame SHOULD be generated for at least every second ack-eliciting packet.
 This recommendation is in keeping with standard practice for TCP {{?RFC5681}}.
 
 In order to assist loss detection at the sender, an endpoint SHOULD send an ACK
-frame immediately on receiving an ack-eliciting packet that is out of order. The
+frame immediately on receiving an ack-eliciting packet with a packet number that
+is two or more greater than the largest packet number previously received.  The
 endpoint MAY continue sending ACK frames immediately on each subsequently
 received packet, but the endpoint SHOULD return to acknowledging every other
 packet within a period of 1/8 x RTT, unless more ack-eliciting packets are
